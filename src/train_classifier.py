@@ -13,6 +13,7 @@ import argparse
 import os
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -142,10 +143,21 @@ def main():
         # Log confusion matrix as artifact
         mlflow.log_artifact(cm_path, artifact_path="plots")
 
-        # Log the model
-        mlflow.sklearn.log_model(
+                # ---- Model signature + input_example ----
+        input_example = X_test[:5]
+        signature = infer_signature(X_train, model.predict(X_train))
+
+        # Log model in modern style:
+        # - name="model" replaces artifact_path="model"
+        # - registered_model_name auto-registers if requested
+        logged = mlflow.sklearn.log_model(
             sk_model=model,
-            artifact_path="model",  # per-run artifact name
+            input_example=input_example,
+            signature=signature,
+            name="model",
+            registered_model_name=(
+                args.registered_model_name if args.register_model else None
+            ),
         )
 
         run_id = run.info.run_id
@@ -158,18 +170,14 @@ def main():
             f"🏃 View run rf_classifier_dvc at: "
             f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
         )
+        print(f"📦 Model URI: {logged.model_uri}")
 
-        # Optionally: register best model
         if args.register_model:
-            model_uri = f"runs:/{run_id}/model"
-            mv = mlflow.register_model(
-                model_uri=model_uri,
-                name=args.registered_model_name,
-            )
             print(
-                f"✅ Registered model '{mv.name}' version {mv.version} "
-                f"(accuracy={acc:.4f})"
+                f"✅ Registered model '{args.registered_model_name}' "
+                f"from run {run_id} (accuracy={acc:.4f})"
             )
+
 
 
 if __name__ == "__main__":

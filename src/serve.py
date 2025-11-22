@@ -11,7 +11,7 @@ from typing import List
 
 import mlflow
 import mlflow.pyfunc
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 import numpy as np
@@ -45,8 +45,11 @@ def health():
 
 @app.post("/predict")
 def predict(instances: Instances):
-    # Convert input to numpy array
     X = np.array(instances.inputs)
-    preds = model.predict(X)
-    # Convert numpy types to Python types
+    try:
+        preds = model.predict(X)
+    except Exception as e:
+        # For debugging – don't keep this in prod
+        print("Prediction error:", repr(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return {"predictions": [int(p) for p in preds]}
