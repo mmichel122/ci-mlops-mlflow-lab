@@ -5,4 +5,5 @@ mlruns/
 .dvc/cache/
 .dvc/tmp/
 data/raw/*.csv
-.dvc
+.dvc/
+
