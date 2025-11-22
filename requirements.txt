@@ -1,0 +1,8 @@
+mlflow
+dvc[s3]
+pandas
+numpy
+scikit-learn
+matplotlib
+fastapi
+uvicorn
