@@ -5,3 +5,4 @@ mlruns/
 .dvc/cache/
 .dvc/tmp/
 .dvc/
+.DS_Store

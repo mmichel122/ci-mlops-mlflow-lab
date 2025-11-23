@@ -7,7 +7,6 @@ Dockerfile
 .DS_Store
 
 # Ignore actual data files, but keep DVC metadata
-data/raw/*.csv
 data/processed/
 data/interim/
 artifacts_local/

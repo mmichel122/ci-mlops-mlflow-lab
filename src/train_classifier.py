@@ -4,9 +4,9 @@ Train a classifier, track experiments with MLflow, data with DVC.
 
 Steps:
 - Load dataset from data/raw/dataset.csv
-- Train a simple classifier (RandomForestClassifier)
+- Run 5 experiments (different random_state seeds)
 - Log params, metrics, and confusion matrix plot to MLflow
-- Register best model in MLflow Model Registry (optional)
+- Register ONLY the best model in MLflow Model Registry (optional)
 """
 
 import argparse
@@ -19,6 +19,7 @@ import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
 from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,12 +61,12 @@ def parse_args():
         "--random-state",
         type=int,
         default=42,
-        help="Random seed",
+        help="Base random seed (we'll derive 5 seeds from this)",
     )
     parser.add_argument(
         "--register-model",
         action="store_true",
-        help="If set, register this model in the MLflow Model Registry",
+        help="If set, register the BEST model in the MLflow Model Registry",
     )
     parser.add_argument(
         "--registered-model-name",
@@ -178,84 +179,126 @@ def main():
         stratify=y,
     )
 
-    with mlflow.start_run(run_name="rf_classifier_dvc") as run:
-        # Log hyperparams
-        mlflow.log_param("n_estimators", args.n_estimators)
-        mlflow.log_param("max_depth", args.max_depth)
-        mlflow.log_param("test_size", args.test_size)
-        mlflow.log_param("random_state", args.random_state)
-        mlflow.log_param("experiment_name", final_experiment_name)
+    # ------------------------------------------------------------------
+    # Run 5 experiments: same hyperparams, different random_state seeds
+    # ------------------------------------------------------------------
+    seeds = [args.random_state + i for i in range(5)]
 
-        # Train model
-        model = RandomForestClassifier(
-            n_estimators=args.n_estimators,
-            max_depth=args.max_depth,
-            random_state=args.random_state,
-            n_jobs=-1,
-        )
-        model.fit(X_train, y_train)
+    best_acc = -1.0
+    best_run_id = None
 
-        # Evaluate
-        y_pred = model.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        cm = confusion_matrix(y_test, y_pred)
+    print(
+        f"[TRAIN] Running 5 experiments in experiment '{final_experiment_name}' "
+        f"with seeds: {seeds}"
+    )
 
-        mlflow.log_metric("accuracy", acc)
+    for seed in seeds:
+        run_name = f"rf_classifier_dvc_seed_{seed}"
+        print(f"[TRAIN] Starting run '{run_name}' (random_state={seed})")
 
-        # Plot confusion matrix
-        os.makedirs("artifacts_local", exist_ok=True)
-        cm_path = os.path.join("artifacts_local", "confusion_matrix.png")
+        with mlflow.start_run(run_name=run_name) as run:
+            # Log hyperparams
+            mlflow.log_param("n_estimators", args.n_estimators)
+            mlflow.log_param("max_depth", args.max_depth)
+            mlflow.log_param("test_size", args.test_size)
+            mlflow.log_param("random_state", seed)
+            mlflow.log_param("experiment_name", final_experiment_name)
 
-        plt.figure(figsize=(4, 4))
-        plt.imshow(cm, interpolation="nearest", cmap="Blues")
-        plt.title("Confusion Matrix")
-        plt.colorbar()
-        tick_marks = np.arange(len(np.unique(y)))
-        plt.xticks(tick_marks, tick_marks)
-        plt.yticks(tick_marks, tick_marks)
-        plt.ylabel("True label")
-        plt.xlabel("Predicted label")
-        plt.tight_layout()
-        plt.savefig(cm_path)
-        plt.close()
-
-        # Log confusion matrix as artifact
-        mlflow.log_artifact(cm_path, artifact_path="plots")
-
-        # ---- Model signature + input_example ----
-        input_example = X_test[:5]
-        signature = infer_signature(X_train, model.predict(X_train))
-
-        # Log model in modern style:
-        # - name="model" replaces artifact_path="model"
-        # - registered_model_name auto-registers if requested
-        logged = mlflow.sklearn.log_model(
-            sk_model=model,
-            input_example=input_example,
-            signature=signature,
-            name="model",
-            registered_model_name=(
-                args.registered_model_name if args.register_model else None
-            ),
-        )
-
-        run_id = run.info.run_id
-        experiment_id = run.info.experiment_id
-        tracking_uri = mlflow.get_tracking_uri()
-
-        print(f"Run completed. accuracy = {acc:.4f}")
-        print("Check the MLflow UI for details.")
-        print(
-            f"🏃 View run rf_classifier_dvc at: "
-            f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
-        )
-        print(f"📦 Model URI: {logged.model_uri}")
-
-        if args.register_model:
-            print(
-                f"✅ Registered model '{args.registered_model_name}' "
-                f"from run {run_id} (accuracy={acc:.4f})"
+            # Train model
+            model = RandomForestClassifier(
+                n_estimators=args.n_estimators,
+                max_depth=args.max_depth,
+                random_state=seed,
+                n_jobs=-1,
             )
+            model.fit(X_train, y_train)
+
+            # Evaluate
+            y_pred = model.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            cm = confusion_matrix(y_test, y_pred)
+
+            mlflow.log_metric("accuracy", acc)
+
+            # Plot confusion matrix
+            os.makedirs("artifacts_local", exist_ok=True)
+            cm_path = os.path.join(
+                "artifacts_local", f"confusion_matrix_seed_{seed}.png"
+            )
+
+            plt.figure(figsize=(4, 4))
+            plt.imshow(cm, interpolation="nearest", cmap="Blues")
+            plt.title("Confusion Matrix")
+            plt.colorbar()
+            tick_marks = np.arange(len(np.unique(y)))
+            plt.xticks(tick_marks, tick_marks)
+            plt.yticks(tick_marks, tick_marks)
+            plt.ylabel("True label")
+            plt.xlabel("Predicted label")
+            plt.tight_layout()
+            plt.savefig(cm_path)
+            plt.close()
+
+            # Log confusion matrix as artifact
+            mlflow.log_artifact(cm_path, artifact_path="plots")
+
+            # ---- Model signature + input_example ----
+            input_example = X_test[:5]
+            signature = infer_signature(X_train, model.predict(X_train))
+
+            # Log model as an artifact (no registry yet)
+            mlflow.sklearn.log_model(
+                sk_model=model,
+                input_example=input_example,
+                signature=signature,
+                artifact_path="model",
+            )
+
+            run_id = run.info.run_id
+            experiment_id = run.info.experiment_id
+            tracking_uri = mlflow.get_tracking_uri()
+
+            print(f"[RUN] Completed run {run_id} with accuracy={acc:.4f}")
+            print(
+                f"🏃 View run {run_name} at: "
+                f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
+            )
+
+            # Track best run
+            if acc > best_acc:
+                best_acc = acc
+                best_run_id = run_id
+
+    # ------------------------------------------------------------------
+    # After 5 runs: register ONLY the best model (if requested)
+    # ------------------------------------------------------------------
+    if args.register_model:
+        if best_run_id is None:
+            raise RuntimeError("No successful runs to register a model from.")
+
+        client = MlflowClient()
+        source_uri = f"runs:/{best_run_id}/model"
+
+        print(
+            f"[REGISTER] Registering best model from run {best_run_id} "
+            f"(accuracy={best_acc:.4f}) to '{args.registered_model_name}'"
+        )
+        registered = mlflow.register_model(
+            model_uri=source_uri,
+            name=args.registered_model_name,
+        )
+
+        print(
+            f"✅ Registered model '{args.registered_model_name}' "
+            f"version {registered.version} from run {best_run_id} "
+            f"(accuracy={best_acc:.4f})"
+        )
+    else:
+        print(
+            f"[RESULT] Best run accuracy={best_acc:.4f} "
+            f"(run_id={best_run_id}), no model registered "
+            f"(--register-model not set)."
+        )
 
 
 if __name__ == "__main__":
