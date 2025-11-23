@@ -1,8 +1,16 @@
 venv/
 __pycache__/
 *.pyc
-.git
 .mlflow
 mlruns
-data/
-.dvc/
+Dockerfile
+.DS_Store
+
+# Ignore actual data files, but keep DVC metadata
+data/raw/*.csv
+data/processed/
+data/interim/
+artifacts_local/
+
+# Keep .dvc (we need the repo), but you can skip cache if huge
+.dvc/cache/

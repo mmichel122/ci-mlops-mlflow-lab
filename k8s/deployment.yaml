@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlops-api
+  namespace: mlops-lab
+  labels:
+    app: mlops-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlops-api
+  template:
+    metadata:
+      labels:
+        app: mlops-api
+    spec:
+      containers:
+        - name: mlops-api
+          image: docker.io/mmdocker06/mlops-lab-api:stable
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            # MLflow tracking server URL
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow.mlops-lab.svc.cluster.local:5000"   # later we’ll switch this to the mlflow Service name
+
+            # Model to load from MLflow Model Registry
+            - name: MODEL_URI
+              value: "models:/dvc_rf_classifier/1"
+
+            # MinIO / S3 credentials (from Secret)
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://minio.mlops-lab.svc.cluster.local:9000"
+
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-aws-credentials
+                  key: AWS_ACCESS_KEY_ID
+
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-aws-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+
+            # Non-secret config
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30

@@ -10,10 +10,15 @@ Steps:
 """
 
 import argparse
+import subprocess
 import os
+from pathlib import Path
+import re
+
 import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
+from mlflow.exceptions import MlflowException
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -72,19 +77,92 @@ def parse_args():
     return parser.parse_args()
 
 
+def _next_experiment_version(name: str) -> str:
+    """
+    Given a name like 'dvc_mlflow_classifier' or 'dvc_mlflow_classifier_v3',
+    return the next versioned name:
+
+      'dvc_mlflow_classifier'    -> 'dvc_mlflow_classifier_v1'
+      'dvc_mlflow_classifier_v3' -> 'dvc_mlflow_classifier_v4'
+    """
+    m = re.match(r"^(.*)_v(\d+)$", name)
+    if m:
+        base = m.group(1)
+        version = int(m.group(2))
+        return f"{base}_v{version + 1}"
+    else:
+        return f"{name}_v1"
+
+
+def ensure_experiment(experiment_name: str) -> str:
+    """
+    Try to set the given experiment name. If it fails because the experiment
+    is soft-deleted, increment a _vN suffix and retry.
+
+    Returns the final experiment name that was successfully set.
+    """
+    current = experiment_name
+    max_attempts = 10
+
+    for _ in range(max_attempts):
+        try:
+            mlflow.set_experiment(current)
+            if current != experiment_name:
+                print(
+                    f"[MLFLOW] Original experiment '{experiment_name}' was deleted; "
+                    f"using '{current}' instead."
+                )
+            return current
+        except MlflowException as e:
+            msg = str(e)
+            if "Cannot set a deleted experiment" in msg:
+                # Compute next versioned experiment name
+                next_name = _next_experiment_version(current)
+                print(
+                    f"[MLFLOW] Cannot use deleted experiment '{current}'. "
+                    f"Trying new experiment name '{next_name}'."
+                )
+                current = next_name
+                continue
+            # Some other MlflowException → re-raise
+            raise
+
+    raise MlflowException(
+        f"Failed to create or set experiment after {max_attempts} attempts, "
+        f"starting from '{experiment_name}'."
+    )
+
+
 def main():
     args = parse_args()
 
     # Point to MLflow server
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
-    mlflow.set_experiment(args.experiment_name)
+
+    # Ensure we have a usable experiment, even if the original was soft-deleted
+    final_experiment_name = ensure_experiment(args.experiment_name)
 
     # Load dataset tracked by DVC
-    data_path = "data/raw/dataset.csv"
-    if not os.path.exists(data_path):
-        raise FileNotFoundError(
-            f"{data_path} not found. Did you run `dvc pull` and have dataset.csv?"
-        )
+    data_path = Path("data/raw/dataset.csv")
+
+    if not data_path.exists():
+        print(f"[DATA] {data_path} not found. Trying plain 'dvc pull'...")
+        try:
+            # No path argument → pull all tracked outs based on dvc.yaml + *.dvc
+            subprocess.run(
+                ["dvc", "pull"],
+                check=True,
+            )
+        except Exception as e:
+            print(f"[DATA] dvc pull failed: {e!r}")
+
+        # Re-check after dvc pull
+        if not data_path.exists():
+            raise FileNotFoundError(
+                f"{data_path} not found even after 'dvc pull'. "
+                "Did you configure your DVC remote and credentials, "
+                "and is the dataset tracked in this repo?"
+            )
 
     df = pd.read_csv(data_path)
 
@@ -106,6 +184,7 @@ def main():
         mlflow.log_param("max_depth", args.max_depth)
         mlflow.log_param("test_size", args.test_size)
         mlflow.log_param("random_state", args.random_state)
+        mlflow.log_param("experiment_name", final_experiment_name)
 
         # Train model
         model = RandomForestClassifier(
@@ -143,7 +222,7 @@ def main():
         # Log confusion matrix as artifact
         mlflow.log_artifact(cm_path, artifact_path="plots")
 
-                # ---- Model signature + input_example ----
+        # ---- Model signature + input_example ----
         input_example = X_test[:5]
         signature = infer_signature(X_train, model.predict(X_train))
 
@@ -177,7 +256,6 @@ def main():
                 f"✅ Registered model '{args.registered_model_name}' "
                 f"from run {run_id} (accuracy={acc:.4f})"
             )
-
 
 
 if __name__ == "__main__":

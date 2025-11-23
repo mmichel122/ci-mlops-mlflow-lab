@@ -1,0 +1,55 @@
+name: Deploy MLflow stack to k3s
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${KUBE_CONFIG}" > $HOME/.kube/config
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+
+      - name: Create/Update MinIO secret
+        env:
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+        run: |
+          kubectl -n mlops-lab create secret generic mlops-minio-credentials \
+            --from-literal=MINIO_ROOT_USER="${MINIO_ROOT_USER}" \
+            --from-literal=MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create/Update AWS creds secret (for MLflow + API)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          kubectl -n mlops-lab create secret generic mlops-aws-credentials \
+            --from-literal=AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply all manifests in k8s/ folder
+        run: |
+          kubectl apply -f k8s/

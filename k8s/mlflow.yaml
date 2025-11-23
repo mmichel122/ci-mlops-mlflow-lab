@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: mlops-lab
+  labels:
+    app: mlflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      containers:
+        - name: mlflow
+          image: docker.io/youruser/mlflow-tracking:latest  # TODO: change
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://minio.mlops-lab.svc.cluster.local:9000"
+
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-aws-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-aws-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+
+            - name: BACKEND_STORE_URI
+              value: "sqlite:///mlflow.db"
+            - name: ARTIFACT_ROOT
+              value: "s3://mlflow-artifacts"
+
+          command: ["mlflow"]
+          args:
+            - server
+            - --host=0.0.0.0
+            - --port=5000
+            - --backend-store-uri=$(BACKEND_STORE_URI)
+            - --default-artifact-root=$(ARTIFACT_ROOT)
+          ports:
+            - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: mlops-lab
+  labels:
+    app: mlflow
+spec:
+  type: ClusterIP
+  selector:
+    app: mlflow
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
