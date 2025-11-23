@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: mlflow
-          image: docker.io/youruser/mlflow-tracking:latest  # TODO: change
+          image: docker.io/mmdocker06/mlflow-server:latest  # TODO: change
           imagePullPolicy: IfNotPresent
           env:
             - name: MLFLOW_S3_ENDPOINT_URL
