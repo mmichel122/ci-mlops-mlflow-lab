@@ -27,8 +27,8 @@ spec:
               value: "http://mlflow:5000"   # later we’ll switch this to the mlflow Service name
 
             # Model to load from MLflow Model Registry
-            - name: MODEL_URI
-              value: "models:/dvc_rf_classifier/1"
+            # - name: MODEL_URI
+            #   value: "models:/dvc_rf_classifier/1"
 
             # MinIO / S3 credentials (from Secret)
             - name: MLFLOW_S3_ENDPOINT_URL
