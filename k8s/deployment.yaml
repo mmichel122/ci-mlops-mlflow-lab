@@ -24,7 +24,7 @@ spec:
           env:
             # MLflow tracking server URL
             - name: MLFLOW_TRACKING_URI
-              value: "http://mlflow.mlops-lab.svc.cluster.local:5000"   # later we’ll switch this to the mlflow Service name
+              value: "http://mlflow:5000"   # later we’ll switch this to the mlflow Service name
 
             # Model to load from MLflow Model Registry
             - name: MODEL_URI
@@ -32,7 +32,7 @@ spec:
 
             # MinIO / S3 credentials (from Secret)
             - name: MLFLOW_S3_ENDPOINT_URL
-              value: "http://minio.mlops-lab.svc.cluster.local:9000"
+              value: "http://minio:9000"
 
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
