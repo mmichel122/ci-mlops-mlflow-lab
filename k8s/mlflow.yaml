@@ -46,6 +46,7 @@ spec:
             - --port=5000
             - --backend-store-uri=$(BACKEND_STORE_URI)
             - --default-artifact-root=$(ARTIFACT_ROOT)
+            - --disable-security-middleware
           ports:
             - containerPort: 5000
 ---
