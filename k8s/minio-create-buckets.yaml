@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: minio-create-buckets
-  namespace: mlops
+  namespace: mlops-lab
 spec:
   template:
     spec:
