@@ -247,11 +247,16 @@ def main():
             signature = infer_signature(X_train, model.predict(X_train))
 
             # Log model as an artifact (no registry yet)
+            artifact_name = f"model_{run.info.run_id}"
+
+            # Make Run UI show the artifact path
+            mlflow.log_param("model_artifact_path", artifact_name)
+
             mlflow.sklearn.log_model(
                 sk_model=model,
                 input_example=input_example,
                 signature=signature,
-                name=f"model_{run.info.run_id}",
+                name=artifact_name,
             )
 
             run_id = run.info.run_id
@@ -268,6 +273,7 @@ def main():
             if acc > best_acc:
                 best_acc = acc
                 best_run_id = run_id
+                best_seed = seed
 
     # ------------------------------------------------------------------
     # After 5 runs: register ONLY the best model (if requested)
@@ -283,9 +289,50 @@ def main():
             f"[REGISTER] Registering best model from run {best_run_id} "
             f"(accuracy={best_acc:.4f}) to '{args.registered_model_name}'"
         )
+
         registered = mlflow.register_model(
             model_uri=source_uri,
             name=args.registered_model_name,
+        )
+
+        # Add useful tags to the model version
+        client.set_model_version_tag(
+            name=args.registered_model_name,
+            version=registered.version,
+            key="accuracy",
+            value=str(best_acc),
+        )
+
+        client.set_model_version_tag(
+            name=args.registered_model_name,
+            version=registered.version,
+            key="best_run_id",
+            value=best_run_id,
+        )
+
+        client.set_model_version_tag(
+            name=args.registered_model_name,
+            version=registered.version,
+            key="artifact_path",
+            value=f"model_{best_run_id}",
+        )
+
+        client.set_model_version_tag(
+            name=args.registered_model_name,
+            version=registered.version,
+            key="accuracy",
+            value=str(best_acc),
+        )
+
+        client.update_model_version(
+            name=args.registered_model_name,
+            version=registered.version,
+            description=(
+                f"Model selected from 5 random seeds.\n"
+                f"Accuracy: {best_acc:.4f}\n"
+                f"Run ID: {best_run_id}\n"
+                f"Artifact path: model_{best_run_id}"
+            )
         )
 
         print(
