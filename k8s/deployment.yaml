@@ -18,7 +18,7 @@ spec:
       containers:
         - name: mlops-api
           image: docker.io/mmdocker06/mlops-lab-api:stable
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:
