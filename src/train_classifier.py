@@ -251,7 +251,7 @@ def main():
                 sk_model=model,
                 input_example=input_example,
                 signature=signature,
-                artifact_path="model",
+                name=f"model_{run.info.run_id}",
             )
 
             run_id = run.info.run_id
@@ -277,7 +277,7 @@ def main():
             raise RuntimeError("No successful runs to register a model from.")
 
         client = MlflowClient()
-        source_uri = f"runs:/{best_run_id}/model"
+        source_uri = f"runs:/{best_run_id}/model_{best_run_id}"
 
         print(
             f"[REGISTER] Registering best model from run {best_run_id} "
